@@ -206,6 +206,12 @@ void AyuLanguage::applyLanguageJson(QJsonDocument doc) {
 			val = val.replace(qsl("%1$s"), qsl("{item1}")).replace(qsl("%2$s"), qsl("{item2}"));
 		}
 
+		val = val.replace(qsl("AyuGram"), qsl("AstraGram"))
+		         .replace(qsl("Аюграм"), qsl("Астраграм"))
+		         .replace(qsl("ayugram"), qsl("astragram"))
+		         .replace(qsl("Ayu"), qsl("Astra"))
+		         .replace(qsl("Аю"), qsl("Астра"));
+
 		Lang::GetInstance().resetValue(key.toUtf8());
 		Lang::GetInstance().applyValue(key.toUtf8(), val.toUtf8());
 	}

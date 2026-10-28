@@ -1,0 +1,118 @@
+name: Build AstraGram Desktop (Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_id:
+        description: 'Telegram API ID (from my.telegram.org)'
+        required: false
+        default: '2040'
+      api_hash:
+        description: 'Telegram API Hash (from my.telegram.org)'
+        required: false
+        default: 'b18441a1ff607e10a989891a5462e627'
+      create_release:
+        description: 'Create a GitHub Release with build files'
+        type: boolean
+        required: false
+        default: true
+  push:
+    branches:
+      - dev
+      - main
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    name: Build Windows x64
+    runs-on: windows-latest
+
+    env:
+      API_ID: ${{ github.event.inputs.api_id || '2040' }}
+      API_HASH: ${{ github.event.inputs.api_hash || 'b18441a1ff607e10a989891a5462e627' }}
+
+    defaults:
+      run:
+        shell: cmd
+
+    steps:
+      - name: Checkout AstraGramDesktop
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Setup MSVC developer command prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          toolset: '14.44'
+
+      - name: Cache Build Libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            D:\TBuild\Libraries
+            D:\TBuild\ThirdParty
+          key: ${{ runner.os }}-astragram-libs-${{ hashFiles('Telegram/build/prepare/prepare.py') }}
+          restore-keys: |
+            ${{ runner.os }}-astragram-libs-
+
+      - name: Prepare build environment
+        run: |
+          mkdir D:\TBuild\Libraries 2>nul
+          mkdir D:\TBuild\ThirdParty 2>nul
+          echo Preparation completed.
+
+      - name: Build Libraries
+        run: |
+          call Telegram\build\prepare\win.bat skip-release silent
+
+      - name: Configure CMake
+        run: |
+          cd Telegram
+          call configure.bat x64 -D TDESKTOP_API_ID=%API_ID% -D TDESKTOP_API_HASH=%API_HASH% -D CMAKE_BUILD_TYPE=Release
+
+      - name: Build AstraGram
+        run: |
+          cmake --build out --config Release --parallel
+
+      - name: Package AstraGram Artifacts
+        shell: pwsh
+        run: |
+          $outDir = "out\Release"
+          if (!(Test-Path $outDir)) { $outDir = "out" }
+          New-Item -ItemType Directory -Path "dist" -Force
+          Copy-Item "$outDir\AstraGram.exe" -Destination "dist\" -ErrorAction SilentlyContinue
+          Copy-Item "$outDir\Updater.exe" -Destination "dist\" -ErrorAction SilentlyContinue
+          Compress-Archive -Path "dist\*" -DestinationPath "AstraGram-Windows-x64.zip" -Force
+          echo "Package created: AstraGram-Windows-x64.zip"
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AstraGram-Windows-x64
+          path: AstraGram-Windows-x64.zip
+
+      - name: Create GitHub Release
+        if: ${{ github.event.inputs.create_release == true || startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || 'latest' }}
+          name: AstraGram Desktop ${{ github.ref_name || 'Build' }}
+          body: |
+            ## 🌟 AstraGram Desktop Release
+            Telegram client with Ghost Mode, deleted messages history, and enhanced features.
+            
+            - **Platform**: Windows 64-bit
+            - **Package**: `AstraGram-Windows-x64.zip`
+          files: |
+            AstraGram-Windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
